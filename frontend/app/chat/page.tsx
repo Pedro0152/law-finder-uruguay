@@ -29,19 +29,26 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // Llamada simulada al backend Python para la prueba
-      // En prod: await fetch('http://localhost:8000/internal/chat', { ... })
-      setTimeout(() => {
-        setMessages(prev => [...prev, {
-          role: 'ai',
-          content: 'De acuerdo a la Ley N° 19.889 (Ley de Urgente Consideración), el artículo establece que...',
-          sources: [
-            { norma: 'Ley 19.889', articulo: 'Art. 1' },
-            { norma: 'Decreto Reglamentario 123/020', articulo: 'Art. 5' }
-          ]
-        }]);
-        setLoading(false);
-      }, 1500);
+      const res = await fetch('/api/internal/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query: userQuery })
+      });
+
+      if (!res.ok) {
+        throw new Error('Error al conectar con la API.');
+      }
+
+      const data = await res.json();
+      
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        content: data.answer,
+        sources: data.sources || []
+      }]);
+      setLoading(false);
       
     } catch (error) {
       console.error(error);

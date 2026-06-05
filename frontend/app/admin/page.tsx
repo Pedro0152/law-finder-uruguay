@@ -4,8 +4,16 @@ import styles from './page.module.css';
 
 export default function AdminDashboard() {
   const handleScrapeTrigger = async () => {
-    // Aquí iría la llamada POST a /internal/scrape/trigger
-    alert("Proceso de Scraping encolado en Celery.");
+    try {
+      const res = await fetch('/api/internal/scrape/trigger', { method: 'POST' });
+      if (res.ok) {
+        alert("Proceso de Scraping encolado en el backend.");
+      } else {
+        alert("Error al encolar el proceso.");
+      }
+    } catch (e) {
+      alert("Error de conexión con el backend.");
+    }
   };
 
   return (
