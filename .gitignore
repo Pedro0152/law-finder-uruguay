@@ -1,0 +1,35 @@
+# Dependencias de Node / Vercel
+node_modules/
+.next/
+.vercel/
+out/
+build/
+dist/
+
+# Python virtual environments
+backend-services/venv/
+backend-services/__pycache__/
+backend-services/**/__pycache__/
+backend-services/**/*.pyc
+backend-services/*.egg-info/
+
+# Variables de entorno (¡NUNCA subir a Git!)
+.env
+.env.local
+.env.production
+.env.*
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# OS específico
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
