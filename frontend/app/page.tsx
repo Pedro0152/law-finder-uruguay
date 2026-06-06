@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
+import Link from 'next/link';
 
 export default function Home() {
   const router = useRouter();
@@ -52,8 +53,11 @@ export default function Home() {
           </div>
           <div className={styles.navLinks}>
             <a href="#" onClick={(e) => { e.preventDefault(); document.getElementById('search-box')?.focus(); }}>Buscador</a>
-            <a href="/chat">Chat Legal AI</a>
-            <a href="#recent">Normativa Reciente</a>
+            <Link href="/chat">Chat Legal AI</Link>
+            <a href="#recent" onClick={(e) => {
+              e.preventDefault();
+              document.getElementById('recent')?.scrollIntoView({ behavior: 'smooth' });
+            }}>Normativa Reciente</a>
           </div>
         </div>
       </nav>
