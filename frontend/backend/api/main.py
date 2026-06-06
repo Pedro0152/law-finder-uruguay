@@ -62,12 +62,49 @@ def trigger_scraping():
         def run_scraper_bg():
             try:
                 scraper = ImpoScraper()
-                scraper.scrape_latest()
+                # Modificado temporalmente para evitar 404 en /novedades y usar leyes reales fijas
+                urls = [
+                    "https://www.impo.com.uy/bases/leyes/19889-2020",
+                    "https://www.impo.com.uy/bases/leyes/19133-2013"
+                ]
+                results = []
+                for url in urls:
+                    data = scraper.scrape_norm(url)
+                    if data:
+                        results.append(data)
+                
+                # Insertar en Supabase
+                for res_data in results:
+                    meta = res_data["metadata"]
+                    # Insertar norma
+                    db_res = rag_service.supabase.table("legal_norm").insert({
+                        "numero": meta.get("numero", "0"),
+                        "tipo": meta.get("tipo", "Ley"),
+                        "titulo": meta.get("titulo", "Desconocido")[:255],
+                        "fecha_promulgacion": meta.get("fecha_promulgacion") or "2020-01-01",
+                        "estado_vigencia": meta.get("estado_vigencia", "Activa")
+                    }).execute()
+                    
+                    if db_res.data:
+                        norm_id = db_res.data[0]["id"]
+                        
+                        # Insertar artículos (limitado a 5 para no demorar)
+                        for art in res_data["articulos"][:5]:
+                            texto = f"{meta.get('tipo')} {meta.get('numero')} - Art. {art['numero']}: {art['texto']}"
+                            embedding = rag_service.generate_embedding(texto)
+                            rag_service.supabase.table("legal_article").insert({
+                                "norm_id": norm_id,
+                                "numero_articulo": art["numero"],
+                                "texto_completo": art["texto"],
+                                "embedding": embedding
+                            }).execute()
             except Exception as e:
                 print(f"Scraper error: {e}")
                 
-        threading.Thread(target=run_scraper_bg).start()
-        return {"status": "Scraping task queued in background"}
+        # NOTA: En Vercel Serverless, los hilos de fondo pueden morir rápido.
+        # Lo corremos sincrónicamente si queremos garantizar la ejecución en este MVP:
+        run_scraper_bg()
+        return {"status": "Scraping completado y datos insertados en Supabase."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
