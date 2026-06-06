@@ -1,8 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends
+import sys
+import os
+sys.path.append(os.path.dirname(__file__))
+
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-import os
-from api.nlp.rag_pipeline import LegalRAG
+from nlp.rag_pipeline import LegalRAG
 
 app = FastAPI(
     title="Law Finder API",
@@ -56,7 +59,7 @@ def trigger_scraping():
     """Endpoint para forzar scraping (Llamaría a Celery/Redis en prod)"""
     # En un entorno serverless simulamos la activación o despachamos un background task
     try:
-        from api.scraper.impo_scraper import ImpoScraper
+        from scraper.impo_scraper import ImpoScraper
         import threading
         
         def run_scraper_bg():
