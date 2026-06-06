@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 import os
-from .nlp.rag_pipeline import LegalRAG
+from backend.nlp.rag_pipeline import LegalRAG
 
 app = FastAPI(
     title="Law Finder API",
@@ -56,7 +56,7 @@ def trigger_scraping():
     """Endpoint para forzar scraping (Llamaría a Celery/Redis en prod)"""
     # En un entorno serverless simulamos la activación o despachamos un background task
     try:
-        from .scraper.impo_scraper import ImpoScraper
+        from backend.scraper.impo_scraper import ImpoScraper
         import threading
         
         def run_scraper_bg():
@@ -95,7 +95,7 @@ def trigger_scraping():
                             rag_service.supabase.table("legal_article").insert({
                                 "norm_id": norm_id,
                                 "numero_articulo": art["numero"],
-                                "texto_completo": art["texto"],
+                                "texto_limpio": art["texto"],
                                 "embedding": embedding
                             }).execute()
             except Exception as e:
