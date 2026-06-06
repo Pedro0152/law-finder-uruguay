@@ -1,19 +1,59 @@
+"use client";
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import styles from './page.module.css';
 
 export default function Home() {
+  const router = useRouter();
+  const [searchInput, setSearchInput] = useState('');
+  const [recentNorms, setRecentNorms] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/internal/norms/recent')
+      .then(res => res.json())
+      .then(data => {
+        if (data.results) {
+          setRecentNorms(data.results);
+        }
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Error fetching recent norms:", err);
+        setLoading(false);
+      });
+  }, []);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchInput.trim()) {
+      router.push(`/chat?q=${encodeURIComponent(searchInput.trim())}`);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch(status) {
+      case 'Activa': return '#34d399'; // Verde
+      case 'Derogada': return '#ef4444'; // Rojo
+      case 'Parcial': return '#fbbf24'; // Amarillo
+      default: return '#9ca3af'; // Gris
+    }
+  };
+
   return (
     <main className={styles.main}>
       {/* Header / Navbar */}
       <nav className={styles.nav}>
         <div className={styles.navContainer}>
-          <div className={styles.logoArea}>
+          <div className={styles.logoArea} onClick={() => router.push('/')} style={{cursor: 'pointer'}}>
             <div className={styles.logoIcon}>L</div>
             <span className={styles.logoText}>Law Finder <span>Uruguay</span></span>
           </div>
           <div className={styles.navLinks}>
-            <a href="#">Buscador</a>
-            <a href="#">Chat Legal AI</a>
-            <a href="#">Normativa Reciente</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); document.getElementById('search-box')?.focus(); }}>Buscador</a>
+            <a href="/chat">Chat Legal AI</a>
+            <a href="#recent">Normativa Reciente</a>
           </div>
         </div>
       </nav>
@@ -35,68 +75,52 @@ export default function Home() {
         {/* Search Bar Component */}
         <div className={styles.searchWrapper}>
           <div className={styles.searchGlow}></div>
-          <div className={styles.searchContainer}>
+          <form className={styles.searchContainer} onSubmit={handleSearch}>
             <div className={styles.searchIcon}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             </div>
             <input 
+              id="search-box"
               type="text" 
               placeholder="Ej: ¿Cuál es el plazo para el despido abusivo?" 
               className={styles.searchInput}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
-            <button className={styles.searchBtn}>
+            <button type="submit" className={styles.searchBtn}>
               Buscar
             </button>
-          </div>
+          </form>
         </div>
       </header>
 
-      {/* Recent Norms / MVP List */}
-      <section className={styles.recentSection}>
+      {/* Recent Norms List */}
+      <section id="recent" className={styles.recentSection}>
         <h2 className={styles.sectionTitle}>Normativa Reciente Ingresada</h2>
         <div className={styles.cardsGrid}>
           
-          {/* Mock Card 1 */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <span className={`${styles.tag} ${styles.ley}`}>Ley 19.889</span>
-              <span className={styles.date}>09/07/2020</span>
-            </div>
-            <h3 className={styles.cardTitle}>Ley de Urgente Consideración (LUC)</h3>
-            <p className={styles.cardDesc}>Aprobación de la Ley de Urgente Consideración con modificaciones en seguridad pública, economía, educación y vivienda.</p>
-            <div className={styles.status}>
-              <div className={`${styles.statusDot} ${styles.active}`}></div>
-              <span style={{color: '#34d399'}}>Vigente</span>
-            </div>
-          </div>
-
-          {/* Mock Card 2 */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <span className={`${styles.tag} ${styles.decreto}`}>Decreto 150/007</span>
-              <span className={styles.date}>26/04/2007</span>
-            </div>
-            <h3 className={styles.cardTitle}>Reglamentación del IRPF</h3>
-            <p className={styles.cardDesc}>Reglamentación del Impuesto a las Rentas de las Personas Físicas. Texto actualizado y concordado.</p>
-            <div className={styles.status}>
-              <div className={`${styles.statusDot} ${styles.partial}`}></div>
-              <span style={{color: '#fbbf24'}}>Parcialmente Vigente</span>
-            </div>
-          </div>
-
-          {/* Mock Card 3 */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <span className={`${styles.tag} ${styles.resolucion}`}>Resolución</span>
-              <span className={styles.date}>15/02/2024</span>
-            </div>
-            <h3 className={styles.cardTitle}>Ajuste Base de Prestaciones y Contribuciones (BPC)</h3>
-            <p className={styles.cardDesc}>Se fija el valor de la Base de Prestaciones y Contribuciones a partir del 1° de enero de 2024.</p>
-            <div className={styles.status}>
-              <div className={`${styles.statusDot} ${styles.active}`}></div>
-              <span style={{color: '#34d399'}}>Vigente</span>
-            </div>
-          </div>
+          {loading ? (
+            <p style={{color: 'rgba(255,255,255,0.5)'}}>Cargando normativa de Supabase...</p>
+          ) : recentNorms.length === 0 ? (
+            <p style={{color: 'rgba(255,255,255,0.5)'}}>Aún no se ha realizado el primer scraping. Ve al panel de admin para forzar actualización.</p>
+          ) : (
+            recentNorms.map((norma, idx) => (
+              <div key={idx} className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <span className={`${styles.tag} ${styles[norma.tipo.toLowerCase()] || styles.ley}`}>
+                    {norma.tipo} {norma.numero}
+                  </span>
+                  <span className={styles.date}>{norma.fecha_promulgacion || 'Sin fecha'}</span>
+                </div>
+                <h3 className={styles.cardTitle}>{norma.titulo || 'Sin título'}</h3>
+                <p className={styles.cardDesc}>Normativa procesada e indexada en la base de datos vectorial.</p>
+                <div className={styles.status}>
+                  <div className={styles.statusDot} style={{backgroundColor: getStatusColor(norma.estado_vigencia)}}></div>
+                  <span style={{color: getStatusColor(norma.estado_vigencia)}}>{norma.estado_vigencia}</span>
+                </div>
+              </div>
+            ))
+          )}
 
         </div>
       </section>

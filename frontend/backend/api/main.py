@@ -54,4 +54,32 @@ def chat_legal(req: ChatQuery):
 @app.post("/internal/scrape/trigger")
 def trigger_scraping():
     """Endpoint para forzar scraping (Llamaría a Celery/Redis en prod)"""
-    return {"status": "Scraping task queued"}
+    # En un entorno serverless simulamos la activación o despachamos un background task
+    try:
+        from .scraper.impo_scraper import ImpoScraper
+        import threading
+        
+        def run_scraper_bg():
+            try:
+                scraper = ImpoScraper()
+                scraper.scrape_latest()
+            except Exception as e:
+                print(f"Scraper error: {e}")
+                
+        threading.Thread(target=run_scraper_bg).start()
+        return {"status": "Scraping task queued in background"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/internal/norms/recent")
+def get_recent_norms():
+    """Devuelve las últimas normas ingresadas en la base de datos."""
+    try:
+        res = rag_service.supabase.table("legal_norm")\
+            .select("id, numero, tipo, titulo, fecha_promulgacion, estado_vigencia")\
+            .order("created_at", desc=True)\
+            .limit(6)\
+            .execute()
+        return {"results": res.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

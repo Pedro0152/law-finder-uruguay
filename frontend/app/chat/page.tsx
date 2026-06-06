@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import styles from './page.module.css';
 import globalStyles from '../page.module.css';
 
@@ -10,7 +11,10 @@ interface Message {
   sources?: { norma: string; articulo: string }[];
 }
 
-export default function ChatPage() {
+function ChatContent() {
+  const searchParams = useSearchParams();
+  const initialQuery = searchParams.get('q');
+  
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'ai',
@@ -19,13 +23,12 @@ export default function ChatPage() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const executeQuery = async (queryText: string) => {
+    if (!queryText.trim()) return;
 
-    const userQuery = input.trim();
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userQuery }]);
+    setMessages(prev => [...prev, { role: 'user', content: queryText }]);
     setLoading(true);
 
     try {
@@ -34,7 +37,7 @@ export default function ChatPage() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ query: userQuery })
+        body: JSON.stringify({ query: queryText })
       });
 
       if (!res.ok) {
@@ -52,7 +55,26 @@ export default function ChatPage() {
       
     } catch (error) {
       console.error(error);
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        content: 'Ocurrió un error al procesar tu solicitud. Por favor intenta de nuevo.'
+      }]);
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialQuery && !hasInitialized) {
+      setHasInitialized(true);
+      executeQuery(initialQuery);
+    }
+  }, [initialQuery, hasInitialized]);
+
+  const handleSend = () => {
+    if (input.trim()) {
+      const query = input.trim();
+      setInput('');
+      executeQuery(query);
     }
   };
 
@@ -127,5 +149,13 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div style={{color: 'white', padding: '2rem'}}>Cargando chat...</div>}>
+      <ChatContent />
+    </Suspense>
   );
 }
