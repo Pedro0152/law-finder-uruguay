@@ -101,10 +101,10 @@ def trigger_scraping():
             except Exception as e:
                 print(f"Scraper error: {e}")
                 
-        # NOTA: En Vercel Serverless, los hilos de fondo pueden morir rápido.
-        # Lo corremos sincrónicamente si queremos garantizar la ejecución en este MVP:
-        run_scraper_bg()
-        return {"status": "Scraping completado y datos insertados en Supabase."}
+        # NOTA: En Vercel Serverless, los hilos de fondo se congelan cuando termina la request.
+        # Ejecutaremos en un hilo de fondo y retornaremos inmediatamente para evitar 504 Timeout.
+        threading.Thread(target=run_scraper_bg).start()
+        return {"status": "Scraping encolado. (Nota: en Vercel serverless puede interrumpirse, pero intentará avanzar)."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
