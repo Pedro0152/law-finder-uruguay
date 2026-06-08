@@ -328,9 +328,24 @@ class LegalRAG:
 
 
 import os
+import re
+from datetime import datetime
+import hashlib
+from typing import List, Dict, Optional
+import traceback
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+global_import_error = None
+try:
+    import requests
+    from supabase import create_client, Client
+    from bs4 import BeautifulSoup
+    from fastapi import FastAPI, BackgroundTasks, HTTPException
+    from pydantic import BaseModel
+except Exception as e:
+    global_import_error = traceback.format_exc()
+    from fastapi import FastAPI, HTTPException
+    from pydantic import BaseModel
+    print(f"Failed to import dependencies: {e}")
 from typing import List, Optional
 
 app = FastAPI(
@@ -340,7 +355,14 @@ app = FastAPI(
     root_path="/api"
 )
 
-rag_service = LegalRAG()
+rag_service = None
+rag_init_error = None
+try:
+    rag_service = LegalRAG()
+except Exception as e:
+    import traceback
+    rag_init_error = traceback.format_exc()
+    print(f"Failed to initialize LegalRAG: {e}")
 
 class SearchQuery(BaseModel):
     query: str
@@ -356,6 +378,10 @@ class ChatResponse(BaseModel):
 
 @app.get("/internal/health")
 def health_check():
+    if global_import_error:
+        return {"status": "error", "service": "Law Finder Backend", "error": f"Import error: {global_import_error}"}
+    if rag_init_error:
+        return {"status": "error", "service": "Law Finder Backend", "error": f"Init error: {rag_init_error}"}
     return {"status": "ok", "service": "Law Finder Backend"}
 
 @app.post("/internal/search")
@@ -383,6 +409,10 @@ def chat_legal(req: ChatQuery):
 @app.post("/internal/scrape/trigger")
 def trigger_scraping():
     """Endpoint para forzar scraping (Llamaría a Celery/Redis en prod)"""
+    if global_import_error:
+        raise HTTPException(status_code=500, detail=f"Import error: {global_import_error}")
+    if rag_init_error:
+        raise HTTPException(status_code=500, detail=f"Service initialization failed: {rag_init_error}")
     # En un entorno serverless simulamos la activación o despachamos un background task
     try:
         import threading
