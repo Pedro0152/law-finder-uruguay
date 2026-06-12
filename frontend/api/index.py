@@ -372,6 +372,11 @@ def health_check():
         return {"status": "error", "service": "Law Finder Backend", "error": f"Init error: {rag_init_error}"}
     return {"status": "ok", "service": "Law Finder Backend"}
 
+from fastapi import Request
+@app.route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def catch_all(request: Request, full_path: str):
+    return {"detail": "Catch all", "path": request.scope.get("path"), "full_path": full_path, "root_path": request.scope.get("root_path")}
+
 @app.post("/internal/search")
 def hybrid_search(req: SearchQuery):
     """
