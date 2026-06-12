@@ -384,10 +384,6 @@ def health_check():
         return {"status": "error", "service": "Law Finder Backend", "error": f"Init error: {rag_init_error}"}
     return {"status": "ok", "service": "Law Finder Backend"}
 
-from fastapi import Request
-@app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def catch_all(request: Request, full_path: str):
-    return {"detail": "Catch all", "path": request.scope.get("path"), "full_path": full_path, "root_path": request.scope.get("root_path")}
 
 @app.post("/api/internal/search")
 def hybrid_search(req: SearchQuery):
@@ -483,3 +479,9 @@ def get_recent_norms():
         return {"results": res.data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+from fastapi import Request
+@app.api_route('/{full_path:path}', methods=['GET', 'POST', 'PUT', 'DELETE'])
+async def catch_all(request: Request, full_path: str):
+    return {'detail': 'Catch all', 'path': request.scope.get('path'), 'full_path': full_path, 'root_path': request.scope.get('root_path')}
+
