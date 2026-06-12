@@ -374,7 +374,7 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[dict]
 
-@app.get("/internal/health")
+@app.get("/api/internal/health")
 def health_check():
     if global_top_error:
         return {"status": "error", "service": "Law Finder Backend", "error": f"Top import error: {global_top_error}"}
@@ -389,7 +389,7 @@ from fastapi import Request
 async def catch_all(request: Request, full_path: str):
     return {"detail": "Catch all", "path": request.scope.get("path"), "full_path": full_path, "root_path": request.scope.get("root_path")}
 
-@app.post("/internal/search")
+@app.post("/api/internal/search")
 def hybrid_search(req: SearchQuery):
     """
     Realiza una búsqueda híbrida (FTS + Vectorial) y devuelve artículos relevantes.
@@ -400,7 +400,7 @@ def hybrid_search(req: SearchQuery):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/internal/chat", response_model=ChatResponse)
+@app.post("/api/internal/chat", response_model=ChatResponse)
 def chat_legal(req: ChatQuery):
     """
     Procesa una pregunta en lenguaje natural y genera una respuesta usando RAG.
@@ -411,7 +411,7 @@ def chat_legal(req: ChatQuery):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/internal/scrape/trigger")
+@app.post("/api/internal/scrape/trigger")
 def trigger_scraping():
     """Endpoint para forzar scraping (Llamaría a Celery/Redis en prod)"""
     if global_top_error:
@@ -471,7 +471,7 @@ def trigger_scraping():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/internal/norms/recent")
+@app.get("/api/internal/norms/recent")
 def get_recent_norms():
     """Devuelve las últimas normas ingresadas en la base de datos."""
     try:
