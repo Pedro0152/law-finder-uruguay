@@ -240,36 +240,22 @@ class LegalRAG:
         else:
             raise Exception(f"Error generando embedding: {response.text}")
 
-    def search(self, query: str, limit: int = 5):
+    def search(self, query: str, limit: int = 10):
         """
-        Realiza búsqueda híbrida invocando a una función RPC de Supabase.
-        La función RPC internamente hará:
-        - Búsqueda Vectorial (pgvector)
-        - Búsqueda Full Text
-        - Fusión de resultados (RRF)
+        Realiza búsqueda híbrida/vectorial invocando a la función RPC de Supabase 'search_legal_articles'.
         """
         query_embedding = self.generate_embedding(query)
         
         try:
-            # Asumimos que creamos una función 'hybrid_search' en Postgres
             res = self.supabase.rpc(
-                'hybrid_search', 
-                {'query_text': query, 'query_embedding': query_embedding, 'match_count': limit}
+                'search_legal_articles', 
+                {'query_embedding': query_embedding, 'match_threshold': 0.5, 'match_count': limit}
             ).execute()
             
             return res.data
         except Exception as e:
-            print(f"Error en búsqueda híbrida: {e}")
-            # Retorno Mock para que el frontend no falle sin DB real
-            return [
-                {
-                    "id": "uuid-mock-1",
-                    "norma": "Ley 19.889",
-                    "articulo": "Art. 1",
-                    "texto": "Se aprueba la Ley de Urgente Consideración...",
-                    "estado_vigencia": "Activa"
-                }
-            ]
+            print(f"Error en búsqueda vectorial: {e}")
+            return []
 
     def chat_completion(self, query: str) -> dict:
         """
@@ -285,7 +271,7 @@ class LegalRAG:
         context_parts = []
         for doc in relevant_docs:
             context_parts.append(
-                f"--- NORMA: {doc['norma']} | ARTÍCULO: {doc['articulo']} | VIGENCIA: {doc['estado_vigencia']} ---\n{doc['texto']}\n"
+                f"--- DOCUMENTO: {doc['documento']} | VERSIÓN: {doc['version']} | JERARQUÍA: {doc['jerarquia']} | ARTÍCULO: {doc['articulo']} | VIGENCIA: {doc['estado_vigencia']} ---\n{doc['texto']}\n"
             )
         
         context_text = "\n".join(context_parts)
@@ -294,8 +280,10 @@ class LegalRAG:
         system_prompt = (
             "Actúa como un asistente jurídico experto en normativa de Uruguay. "
             "Responde a la pregunta del usuario utilizando ÚNICAMENTE la normativa provista en el contexto. "
+            "Presta especial atención a la 'VIGENCIA' de la norma. Si el usuario pregunta por normativa vigente, NO utilices textos marcados como 'Histórica' o 'Derogada' a menos que te pregunten específicamente por historia o constituciones anteriores. "
             "Si la respuesta no se encuentra en el contexto, indica claramente que no tienes información suficiente basada en la normativa oficial. "
-            "Debes citar la norma y el artículo correspondiente en tu respuesta para asegurar la trazabilidad. "
+            "Debes citar la norma (Documento y Versión), la jerarquía y el artículo correspondiente en tu respuesta para asegurar la trazabilidad. "
+            "Diferencia claramente entre el texto legal vigente, texto histórico y reformas. "
             "Aclara siempre que tu respuesta es generada automáticamente y no reemplaza el asesoramiento profesional."
         )
         
