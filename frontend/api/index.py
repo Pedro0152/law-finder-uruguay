@@ -1,15 +1,47 @@
+import os
 import re
-from typing import List, Dict, Optional
 import hashlib
 from datetime import datetime
 import traceback
+from typing import List, Dict, Optional
 
 global_top_error = None
 try:
     import requests
     from bs4 import BeautifulSoup
+    from supabase import create_client, Client
+    from fastapi import FastAPI, BackgroundTasks, HTTPException, Request
+    from pydantic import BaseModel
 except Exception as e:
     global_top_error = traceback.format_exc()
+    
+    # Dummy classes to prevent NameErrors and provide ASGI fallback
+    class BaseModel:
+        pass
+    class BackgroundTasks:
+        pass
+    class HTTPException(Exception):
+        def __init__(self, *args, **kwargs): pass
+    class Request:
+        pass
+    class FastAPI:
+        def __init__(self, **kwargs): pass
+        def get(self, *args, **kwargs): return lambda f: f
+        def post(self, *args, **kwargs): return lambda f: f
+        def route(self, *args, **kwargs): return lambda f: f
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http":
+                await send({
+                    'type': 'http.response.start',
+                    'status': 500,
+                    'headers': [(b'content-type', b'application/json')]
+                })
+                import json
+                error_resp = json.dumps({"status": "error", "message": "Backend failed to initialize", "detail": global_top_error})
+                await send({
+                    'type': 'http.response.body',
+                    'body': error_resp.encode('utf-8')
+                })
 
 class BaseScraper:
     """Clase base para scrapeadores de normativa legal uruguaya"""
@@ -79,12 +111,6 @@ class BaseScraper:
     def scrape_latest(self):
         """Método principal a implementar por cada scraper específico."""
         raise NotImplementedError("Debe implementarse en la clase hija")
-
-
-
-from bs4 import BeautifulSoup
-import re
-from datetime import datetime
 
 class ImpoScraper(BaseScraper):
     """Scraper para la Dirección Nacional de Impresiones y Publicaciones Oficiales (IMPO)"""
@@ -209,11 +235,6 @@ if __name__ == "__main__":
         print(f"Éxito extrayendo norma: {resultado['metadata']}")
         print(f"Total artículos parseados: {len(resultado['articulos'])}")
 
-
-import os
-import requests
-from supabase import create_client, Client
-
 class LegalRAG:
     """Clase principal para manejar la recuperación (Retrieval) y generación de respuestas."""
 
@@ -321,16 +342,7 @@ class LegalRAG:
         }
 
 
-import os
-import re
-from datetime import datetime
-import hashlib
-from typing import List, Dict, Optional
-import traceback
 
-from typing import List, Optional
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from pydantic import BaseModel
 
 app = FastAPI(
     title="Law Finder API",
@@ -339,14 +351,7 @@ app = FastAPI(
     root_path="/api"
 )
 
-global_import_error = None
-try:
-    import requests
-    from supabase import create_client, Client
-    from bs4 import BeautifulSoup
-except Exception as e:
-    global_import_error = traceback.format_exc()
-    print(f"Failed to import dependencies: {e}")
+
 
 rag_service = None
 rag_init_error = None
@@ -373,8 +378,8 @@ class ChatResponse(BaseModel):
 def health_check():
     if global_top_error:
         return {"status": "error", "service": "Law Finder Backend", "error": f"Top import error: {global_top_error}"}
-    if global_import_error:
-        return {"status": "error", "service": "Law Finder Backend", "error": f"Import error: {global_import_error}"}
+    if global_top_error:
+        return {"status": "error", "service": "Law Finder Backend", "error": f"Import error: {global_top_error}"}
     if rag_init_error:
         return {"status": "error", "service": "Law Finder Backend", "error": f"Init error: {rag_init_error}"}
     return {"status": "ok", "service": "Law Finder Backend"}
@@ -409,8 +414,8 @@ def chat_legal(req: ChatQuery):
 @app.post("/internal/scrape/trigger")
 def trigger_scraping():
     """Endpoint para forzar scraping (Llamaría a Celery/Redis en prod)"""
-    if global_import_error:
-        raise HTTPException(status_code=500, detail=f"Import error: {global_import_error}")
+    if global_top_error:
+        raise HTTPException(status_code=500, detail=f"Import error: {global_top_error}")
     if rag_init_error:
         raise HTTPException(status_code=500, detail=f"Service initialization failed: {rag_init_error}")
     # En un entorno serverless simulamos la activación o despachamos un background task
