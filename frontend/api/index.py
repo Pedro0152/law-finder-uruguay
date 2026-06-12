@@ -328,35 +328,25 @@ import hashlib
 from typing import List, Dict, Optional
 import traceback
 
+from typing import List, Optional
+from fastapi import FastAPI, BackgroundTasks, HTTPException
+from pydantic import BaseModel
+
+app = FastAPI(
+    title="Law Finder API",
+    description="API interna para Law Finder Uruguay",
+    version="1.0.0",
+    root_path="/api"
+)
+
 global_import_error = None
 try:
     import requests
     from supabase import create_client, Client
     from bs4 import BeautifulSoup
-    from fastapi import FastAPI, BackgroundTasks, HTTPException
-    from pydantic import BaseModel
-    from typing import List, Optional
-
-    app = FastAPI(
-        title="Law Finder API",
-        description="API interna para Law Finder Uruguay",
-        version="1.0.0",
-        root_path="/api"
-    )
 except Exception as e:
     global_import_error = traceback.format_exc()
     print(f"Failed to import dependencies: {e}")
-    # ASGI fallback app
-    async def app(scope, receive, send):
-        await send({
-            'type': 'http.response.start',
-            'status': 200,
-            'headers': [(b'content-type', b'text/plain')]
-        })
-        await send({
-            'type': 'http.response.body',
-            'body': str(global_import_error).encode('utf-8')
-        })
 
 rag_service = None
 rag_init_error = None
@@ -379,113 +369,112 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[dict]
 
-if hasattr(app, "get"):
-    @app.get("/internal/health")
-    def health_check():
-        if global_top_error:
-            return {"status": "error", "service": "Law Finder Backend", "error": f"Top import error: {global_top_error}"}
-        if global_import_error:
-            return {"status": "error", "service": "Law Finder Backend", "error": f"Import error: {global_import_error}"}
-        if rag_init_error:
-            return {"status": "error", "service": "Law Finder Backend", "error": f"Init error: {rag_init_error}"}
-        return {"status": "ok", "service": "Law Finder Backend"}
+@app.get("/internal/health")
+def health_check():
+    if global_top_error:
+        return {"status": "error", "service": "Law Finder Backend", "error": f"Top import error: {global_top_error}"}
+    if global_import_error:
+        return {"status": "error", "service": "Law Finder Backend", "error": f"Import error: {global_import_error}"}
+    if rag_init_error:
+        return {"status": "error", "service": "Law Finder Backend", "error": f"Init error: {rag_init_error}"}
+    return {"status": "ok", "service": "Law Finder Backend"}
 
-    from fastapi import Request
-    @app.route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-    async def catch_all(request: Request, full_path: str):
-        return {"detail": "Catch all", "path": request.scope.get("path"), "full_path": full_path, "root_path": request.scope.get("root_path")}
+from fastapi import Request
+@app.route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def catch_all(request: Request, full_path: str):
+    return {"detail": "Catch all", "path": request.scope.get("path"), "full_path": full_path, "root_path": request.scope.get("root_path")}
 
-    @app.post("/internal/search")
-    def hybrid_search(req: SearchQuery):
-        """
-        Realiza una búsqueda híbrida (FTS + Vectorial) y devuelve artículos relevantes.
-        """
-        try:
-            results = rag_service.search(req.query, req.limit)
-            return {"results": results}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+@app.post("/internal/search")
+def hybrid_search(req: SearchQuery):
+    """
+    Realiza una búsqueda híbrida (FTS + Vectorial) y devuelve artículos relevantes.
+    """
+    try:
+        results = rag_service.search(req.query, req.limit)
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    @app.post("/internal/chat", response_model=ChatResponse)
-    def chat_legal(req: ChatQuery):
-        """
-        Procesa una pregunta en lenguaje natural y genera una respuesta usando RAG.
-        """
-        try:
-            response = rag_service.chat_completion(req.query)
-            return response
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+@app.post("/internal/chat", response_model=ChatResponse)
+def chat_legal(req: ChatQuery):
+    """
+    Procesa una pregunta en lenguaje natural y genera una respuesta usando RAG.
+    """
+    try:
+        response = rag_service.chat_completion(req.query)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    @app.post("/internal/scrape/trigger")
-    def trigger_scraping():
-        """Endpoint para forzar scraping (Llamaría a Celery/Redis en prod)"""
-        if global_import_error:
-            raise HTTPException(status_code=500, detail=f"Import error: {global_import_error}")
-        if rag_init_error:
-            raise HTTPException(status_code=500, detail=f"Service initialization failed: {rag_init_error}")
-        # En un entorno serverless simulamos la activación o despachamos un background task
-        try:
-            import threading
-            
-            def run_scraper_bg():
-                try:
-                    scraper = ImpoScraper()
-                    # Modificado temporalmente para evitar 404 en /novedades y usar leyes reales fijas
-                    urls = [
-                        "https://www.impo.com.uy/bases/leyes/19889-2020",
-                        "https://www.impo.com.uy/bases/leyes/19133-2013"
-                    ]
-                    results = []
-                    for url in urls:
-                        data = scraper.scrape_norm(url)
-                        if data:
-                            results.append(data)
+@app.post("/internal/scrape/trigger")
+def trigger_scraping():
+    """Endpoint para forzar scraping (Llamaría a Celery/Redis en prod)"""
+    if global_import_error:
+        raise HTTPException(status_code=500, detail=f"Import error: {global_import_error}")
+    if rag_init_error:
+        raise HTTPException(status_code=500, detail=f"Service initialization failed: {rag_init_error}")
+    # En un entorno serverless simulamos la activación o despachamos un background task
+    try:
+        import threading
+        
+        def run_scraper_bg():
+            try:
+                scraper = ImpoScraper()
+                # Modificado temporalmente para evitar 404 en /novedades y usar leyes reales fijas
+                urls = [
+                    "https://www.impo.com.uy/bases/leyes/19889-2020",
+                    "https://www.impo.com.uy/bases/leyes/19133-2013"
+                ]
+                results = []
+                for url in urls:
+                    data = scraper.scrape_norm(url)
+                    if data:
+                        results.append(data)
+                
+                # Insertar en Supabase
+                for res_data in results:
+                    meta = res_data["metadata"]
+                    # Insertar norma
+                    db_res = rag_service.supabase.table("legal_norm").insert({
+                        "numero": meta.get("numero", "0"),
+                        "tipo": meta.get("tipo", "Ley"),
+                        "titulo": meta.get("titulo", "Desconocido")[:255],
+                        "fecha_promulgacion": meta.get("fecha_promulgacion") or "2020-01-01",
+                        "estado_vigencia": meta.get("estado_vigencia", "Activa")
+                    }).execute()
                     
-                    # Insertar en Supabase
-                    for res_data in results:
-                        meta = res_data["metadata"]
-                        # Insertar norma
-                        db_res = rag_service.supabase.table("legal_norm").insert({
-                            "numero": meta.get("numero", "0"),
-                            "tipo": meta.get("tipo", "Ley"),
-                            "titulo": meta.get("titulo", "Desconocido")[:255],
-                            "fecha_promulgacion": meta.get("fecha_promulgacion") or "2020-01-01",
-                            "estado_vigencia": meta.get("estado_vigencia", "Activa")
-                        }).execute()
+                    if db_res.data:
+                        norm_id = db_res.data[0]["id"]
                         
-                        if db_res.data:
-                            norm_id = db_res.data[0]["id"]
-                            
-                            # Insertar artículos (limitado a 5 para no demorar)
-                            for art in res_data["articulos"][:5]:
-                                texto = f"{meta.get('tipo')} {meta.get('numero')} - Art. {art['numero']}: {art['texto']}"
-                                embedding = rag_service.generate_embedding(texto)
-                                rag_service.supabase.table("legal_article").insert({
-                                    "norm_id": norm_id,
-                                    "numero_articulo": art["numero"],
-                                    "texto_limpio": art["texto"],
-                                    "embedding": embedding
-                                }).execute()
-                except Exception as e:
-                    print(f"Scraper error: {e}")
-                    
-            # NOTA: En Vercel Serverless, los hilos de fondo se congelan cuando termina la request.
-            # Ejecutaremos en un hilo de fondo y retornaremos inmediatamente para evitar 504 Timeout.
-            threading.Thread(target=run_scraper_bg).start()
-            return {"status": "Scraping encolado. (Nota: en Vercel serverless puede interrumpirse, pero intentará avanzar)."}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+                        # Insertar artículos (limitado a 5 para no demorar)
+                        for art in res_data["articulos"][:5]:
+                            texto = f"{meta.get('tipo')} {meta.get('numero')} - Art. {art['numero']}: {art['texto']}"
+                            embedding = rag_service.generate_embedding(texto)
+                            rag_service.supabase.table("legal_article").insert({
+                                "norm_id": norm_id,
+                                "numero_articulo": art["numero"],
+                                "texto_limpio": art["texto"],
+                                "embedding": embedding
+                            }).execute()
+            except Exception as e:
+                print(f"Scraper error: {e}")
+                
+        # NOTA: En Vercel Serverless, los hilos de fondo se congelan cuando termina la request.
+        # Ejecutaremos en un hilo de fondo y retornaremos inmediatamente para evitar 504 Timeout.
+        threading.Thread(target=run_scraper_bg).start()
+        return {"status": "Scraping encolado. (Nota: en Vercel serverless puede interrumpirse, pero intentará avanzar)."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    @app.get("/internal/norms/recent")
-    def get_recent_norms():
-        """Devuelve las últimas normas ingresadas en la base de datos."""
-        try:
-            res = rag_service.supabase.table("legal_norm")\
-                .select("id, numero, tipo, titulo, fecha_promulgacion, estado_vigencia")\
-                .order("created_at", desc=True)\
-                .limit(6)\
-                .execute()
-            return {"results": res.data}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+@app.get("/internal/norms/recent")
+def get_recent_norms():
+    """Devuelve las últimas normas ingresadas en la base de datos."""
+    try:
+        res = rag_service.supabase.table("legal_norm")\
+            .select("id, numero, tipo, titulo, fecha_promulgacion, estado_vigencia")\
+            .order("created_at", desc=True)\
+            .limit(6)\
+            .execute()
+        return {"results": res.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
