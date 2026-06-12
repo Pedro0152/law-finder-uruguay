@@ -1,9 +1,15 @@
-import requests
-from bs4 import BeautifulSoup
 import re
 from typing import List, Dict, Optional
 import hashlib
 from datetime import datetime
+import traceback
+
+global_top_error = None
+try:
+    import requests
+    from bs4 import BeautifulSoup
+except Exception as e:
+    global_top_error = traceback.format_exc()
 
 class BaseScraper:
     """Clase base para scrapeadores de normativa legal uruguaya"""
@@ -366,6 +372,8 @@ class ChatResponse(BaseModel):
 
 @app.get("/internal/health")
 def health_check():
+    if global_top_error:
+        return {"status": "error", "service": "Law Finder Backend", "error": f"Top import error: {global_top_error}"}
     if global_import_error:
         return {"status": "error", "service": "Law Finder Backend", "error": f"Import error: {global_import_error}"}
     if rag_init_error:
