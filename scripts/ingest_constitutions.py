@@ -1,6 +1,7 @@
 import os
 import re
 import psycopg2
+import psycopg2.extras
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -11,19 +12,22 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 import time
 
-def get_embedding(text: str, retries=5) -> list:
+def get_embeddings(texts: list, retries=5) -> list:
+    if not texts: return []
     url = "https://api.openai.com/v1/embeddings"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json"
     }
-    data = {"input": text, "model": "text-embedding-3-small"}
+    data = {"input": texts, "model": "text-embedding-3-small"}
     
     for attempt in range(retries):
         try:
-            resp = requests.post(url, headers=headers, json=data, timeout=15)
+            resp = requests.post(url, headers=headers, json=data, timeout=60)
             if resp.status_code == 200:
-                return resp.json()["data"][0]["embedding"]
+                data_list = resp.json()["data"]
+                data_list.sort(key=lambda x: x["index"])
+                return [x["embedding"] for x in data_list]
             else:
                 print(f"OpenAI Error ({resp.status_code}): {resp.text}")
         except Exception as e:
@@ -32,7 +36,7 @@ def get_embedding(text: str, retries=5) -> list:
         print(f"Retrying in {2**attempt} seconds...")
         time.sleep(2**attempt)
         
-    raise Exception(f"Failed to get embedding after {retries} retries.")
+    raise Exception(f"Failed to get embeddings after {retries} retries.")
 
 def parse_markdown(filepath: str):
     """
@@ -171,23 +175,38 @@ def ingest():
         version_id = cur.fetchone()[0]
         
         print(f"  -> Insertando {len(articles)} artículos...")
-        for art in articles:
-            # Insert Article
-            cur.execute("""
-                INSERT INTO legal_articles (version_id, jerarquia, articulo, texto, vigente)
-                VALUES (%s, %s, %s, %s, %s) RETURNING id;
-            """, (version_id, art["jerarquia"], art["articulo"], art["texto"], metadata["estado"] == "Vigente"))
-            art_id = cur.fetchone()[0]
+        
+        all_embed_texts = [f"Constitución de la República | {metadata['version']} | {art['jerarquia']}\n{art['texto']}" for art in articles]
+        all_embeddings = []
+        batch_size = 100
+        for i in range(0, len(all_embed_texts), batch_size):
+            batch_texts = all_embed_texts[i:i+batch_size]
+            all_embeddings.extend(get_embeddings(batch_texts))
             
-            # Generate Embedding
-            embed_text = f"Constitución de la República | {metadata['version']} | {art['jerarquia']}\n{art['texto']}"
-            embedding = get_embedding(embed_text)
-            
-            # Insert Embedding
-            cur.execute("""
-                INSERT INTO legal_embeddings (article_id, texto_chunk, embedding)
-                VALUES (%s, %s, %s::vector);
-            """, (art_id, embed_text, embedding))
+        # Batch Insert Articles
+        article_data = [(version_id, art["jerarquia"], art["articulo"], art["texto"], metadata["estado"] == "Vigente") for art in articles]
+        art_ids_rows = psycopg2.extras.execute_values(
+            cur,
+            """
+            INSERT INTO legal_articles (version_id, jerarquia, articulo, texto, vigente)
+            VALUES %s RETURNING id;
+            """,
+            article_data,
+            fetch=True
+        )
+        art_ids = [row[0] for row in art_ids_rows]
+        
+        # Batch Insert Embeddings
+        embedding_data = [(art_ids[idx], all_embed_texts[idx], all_embeddings[idx]) for idx in range(len(articles))]
+        psycopg2.extras.execute_values(
+            cur,
+            """
+            INSERT INTO legal_embeddings (article_id, texto_chunk, embedding)
+            VALUES %s;
+            """,
+            embedding_data,
+            template="(%s, %s, %s::vector)"
+        )
             
     cur.close()
     conn.close()
