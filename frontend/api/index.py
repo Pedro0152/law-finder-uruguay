@@ -480,6 +480,137 @@ def get_recent_norms():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+from fastapi import Header
+import time
+
+def extract_law_parlamento(numero):
+    url = f'https://parlamento.gub.uy/documentosyleyes/leyes/ley/{numero}'
+    try:
+        r1 = requests.get(url, timeout=10)
+        if r1.status_code != 200: return None
+            
+        s1 = BeautifulSoup(r1.text, 'html.parser')
+        iframe = s1.find('iframe', id='documento')
+        if not iframe: return None
+            
+        r2 = requests.get(iframe['src'], timeout=10)
+        r2.encoding = 'utf-8'
+        s2 = BeautifulSoup(r2.text, 'html.parser')
+        
+        titulo = ''
+        for h2 in s2.find_all('h2'):
+            if 'Ley N' not in h2.text:
+                titulo += h2.text.strip() + ' '
+        titulo = titulo.strip().replace('\n', ' ')
+
+        articulos = []
+        for p in s2.find_all('p'):
+            text = p.text.strip()
+            if not text: continue
+            if 'Sala de Sesiones' in text or 'Cúmplase' in text or 'Montevideo' in text: break
+                
+            if text.lower().startswith('artículo') or text.lower().startswith('articulo'):
+                articulos.append({"texto": text})
+            elif len(articulos) > 0:
+                articulos[-1]["texto"] += '\n' + text
+                
+        if len(articulos) == 0:
+            content = ''
+            for p in s2.find_all('p'):
+                text = p.text.strip()
+                if not text: continue
+                if 'Sala de Sesiones' in text or 'Cúmplase' in text: break
+                content += text + '\n'
+            if content.strip():
+                articulos.append({"texto": content.strip()})
+                
+        final_arts = []
+        for i, a in enumerate(articulos):
+            t = a["texto"].strip()
+            if t:
+                final_arts.append({
+                    "articulo": f"Artículo {i+1}" if len(articulos) > 1 else "Artículo Único",
+                    "texto": t
+                })
+                
+        return {"numero": str(numero), "titulo": titulo, "articulos": final_arts}
+    except Exception as e:
+        print(f"Excepción al extraer Ley {numero}: {e}")
+        return None
+
+@app.get("/api/cron/ingest-leyes")
+def cron_ingest_leyes(authorization: str = Header(None)):
+    cron_secret = os.environ.get("CRON_SECRET")
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    try:
+        res = rag_service.supabase.table("legal_documents")\
+            .select("numero_norma")\
+            .eq("tipo_documento", "Ley")\
+            .order("created_at", desc=True)\
+            .limit(1).execute()
+            
+        start_num = 20385
+        if res.data and len(res.data) > 0:
+            start_num = int(res.data[0]["numero_norma"]) - 1
+            
+        end_num = max(1, start_num - 20)
+        inserted_count = 0
+        
+        for numero in range(start_num, end_num, -1):
+            data = extract_law_parlamento(numero)
+            if not data or not data["articulos"]:
+                continue
+                
+            doc_res = rag_service.supabase.table("legal_documents").insert({
+                "pais": "Uruguay",
+                "tipo_documento": "Ley",
+                "titulo_oficial": f"Ley {numero} - {data['titulo']}",
+                "numero_norma": str(numero),
+                "organismo_emisor": "Poder Legislativo",
+                "estado_vigencia": "Vigente"
+            }).execute()
+            
+            if not doc_res.data: continue
+            document_id = doc_res.data[0]["id"]
+            
+            ver_res = rag_service.supabase.table("legal_versions").insert({
+                "document_id": document_id,
+                "version_nombre": f"ley_{numero}",
+                "estado_vigencia": "Vigente",
+                "fuente_oficial": f"https://parlamento.gub.uy/documentosyleyes/leyes/ley/{numero}"
+            }).execute()
+            
+            if not ver_res.data: continue
+            version_id = ver_res.data[0]["id"]
+            
+            for art in data["articulos"]:
+                art_res = rag_service.supabase.table("legal_articles").insert({
+                    "version_id": version_id,
+                    "jerarquia": "Ley",
+                    "articulo": art["articulo"],
+                    "texto": art["texto"],
+                    "vigente": True
+                }).execute()
+                
+                if art_res.data:
+                    art_id = art_res.data[0]["id"]
+                    embed_text = f"Ley {numero} - {data['titulo']}\n{art['articulo']}: {art['texto']}"
+                    embedding = rag_service.generate_embedding(embed_text)
+                    rag_service.supabase.table("legal_embeddings").insert({
+                        "article_id": art_id,
+                        "texto_chunk": embed_text,
+                        "embedding": embedding
+                    }).execute()
+                    
+            inserted_count += 1
+            time.sleep(0.5)
+            
+        return {"status": "ok", "message": f"Processed {inserted_count} laws from {start_num} to {end_num + 1}."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 from fastapi import Request
 @app.api_route('/{full_path:path}', methods=['GET', 'POST', 'PUT', 'DELETE'])
 async def catch_all(request: Request, full_path: str):
