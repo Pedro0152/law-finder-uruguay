@@ -1,11 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
 :root {
-  --bg-color: #050505;
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.6);
-  --accent-color: #3b82f6;
-  --accent-glow: rgba(59, 130, 246, 0.4);
-  --card-bg: rgba(20, 20, 20, 0.6);
-  --card-border: rgba(255, 255, 255, 0.05);
+  --bg-color: #09090b; /* Zinc 950 */
+  --bg-surface: #18181b; /* Zinc 900 */
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --accent-color: #c5a059; /* Premium subtle gold */
+  --accent-glow: rgba(197, 160, 89, 0.15);
+  --accent-hover: #d4af37;
+  --card-bg: rgba(255, 255, 255, 0.02);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Playfair Display', serif;
 }
 
 * {
@@ -20,8 +26,24 @@ body {
   overflow-x: hidden;
   background-color: var(--bg-color);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-color); 
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1); 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2); 
 }
 
 a {

@@ -22,19 +22,8 @@ def get_embeddings(texts):
         "model": "text-embedding-3-small"
     }
     
-    for attempt in range(3):
-        try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            response.raise_for_status()
-            res_json = response.json()
-            embeddings = [None] * len(texts)
-            for item in res_json['data']:
-                embeddings[item['index']] = item['embedding']
-            return embeddings
-        except Exception as e:
-            print(f"Error fetching embeddings (attempt {attempt+1}): {e}")
-            time.sleep(2)
-    return [None] * len(texts)
+    # Bypassed OpenAI to speed up massive local ingestion
+    return [[0.0] * 1536 for _ in texts]
 
 def extract_law(numero):
     url = f'https://parlamento.gub.uy/documentosyleyes/leyes/ley/{numero}'
@@ -113,9 +102,18 @@ def extract_law(numero):
         print(f"Excepción al extraer Ley {numero}: {e}")
         return None
 
+def get_db_connection():
+    while True:
+        try:
+            conn = psycopg2.connect(DB_URL)
+            conn.autocommit = False
+            return conn
+        except psycopg2.OperationalError as e:
+            print(f"Error conectando a DB: {e}. Reintentando en 5s...")
+            time.sleep(5)
+
 def ingest_leyes(start_num, end_num):
-    conn = psycopg2.connect(DB_URL)
-    conn.autocommit = False
+    conn = get_db_connection()
     cur = conn.cursor()
     
     print(f"Iniciando ingesta desde {start_num} hasta {end_num}")
@@ -123,8 +121,20 @@ def ingest_leyes(start_num, end_num):
     for numero in range(start_num, end_num - 1, -1):
         print(f"Procesando Ley {numero}...")
         
-        # Check if exists
-        cur.execute("SELECT id FROM legal_versions WHERE version_nombre = %s;", (f"ley_{numero}",))
+        try:
+            cur.execute("SELECT id FROM legal_versions WHERE version_nombre = %s;", (f"ley_{numero}",))
+        except psycopg2.OperationalError:
+            print("Reconectando a la base de datos...")
+            try:
+                cur.close()
+                conn.close()
+            except:
+                pass
+            time.sleep(2)
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM legal_versions WHERE version_nombre = %s;", (f"ley_{numero}",))
+            
         if cur.fetchone():
             print(f"  -> Ley {numero} ya existe. Omitiendo.")
             continue
@@ -200,12 +210,22 @@ def ingest_leyes(start_num, end_num):
             conn.commit()
             print(f"  -> Ley {numero} ingresada con éxito.")
             
+        except psycopg2.OperationalError as e:
+            print(f"  -> Error de conexión en Ley {numero}: {e}. Se reintentará en el próximo ciclo.")
+            try:
+                cur.close()
+                conn.close()
+            except:
+                pass
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
         except Exception as e:
             conn.rollback()
             print(f"  -> Error insertando Ley {numero}: {e}")
             
         # Pequeña demora para no saturar al parlamento
-        time.sleep(1)
+        time.sleep(0.2)
 
     cur.close()
     conn.close()

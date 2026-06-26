@@ -276,7 +276,7 @@ class LegalRAG:
         try:
             res = self.supabase.rpc(
                 'search_legal_articles', 
-                {'query_embedding': query_embedding, 'match_threshold': 0.5, 'match_count': limit}
+                {'query_embedding': query_embedding, 'match_threshold': 0.2, 'match_count': limit}
             ).execute()
             
             return res.data
@@ -296,22 +296,25 @@ class LegalRAG:
         
         # 2. Construcción de Contexto
         context_parts = []
-        for doc in relevant_docs:
+        for i, doc in enumerate(relevant_docs):
             context_parts.append(
-                f"--- DOCUMENTO: {doc['documento']} | VERSIÓN: {doc['version']} | JERARQUÍA: {doc['jerarquia']} | ARTÍCULO: {doc['articulo']} | VIGENCIA: {doc['estado_vigencia']} ---\n{doc['texto']}\n"
+                f"--- [INDEX: {i}] DOCUMENTO: {doc.get('documento', '')} | VERSIÓN: {doc.get('version', '')} | JERARQUÍA: {doc.get('jerarquia', '')} | ARTÍCULO: {doc.get('articulo', '')} | VIGENCIA: {doc.get('estado_vigencia', '')} ---\n{doc.get('texto', '')}\n"
             )
         
         context_text = "\n".join(context_parts)
         
         # 3. Prompting
         system_prompt = (
-            "Actúa como un asistente jurídico experto en normativa de Uruguay. "
-            "Responde a la pregunta del usuario utilizando ÚNICAMENTE la normativa provista en el contexto. "
-            "Presta especial atención a la 'VIGENCIA' de la norma. Si el usuario pregunta por normativa vigente, NO utilices textos marcados como 'Histórica' o 'Derogada' a menos que te pregunten específicamente por historia o constituciones anteriores. "
-            "Si la respuesta no se encuentra en el contexto, indica claramente que no tienes información suficiente basada en la normativa oficial. "
-            "Debes citar la norma (Documento y Versión), la jerarquía y el artículo correspondiente en tu respuesta para asegurar la trazabilidad. "
-            "Diferencia claramente entre el texto legal vigente, texto histórico y reformas. "
-            "Aclara siempre que tu respuesta es generada automáticamente y no reemplaza el asesoramiento profesional."
+            "Actúa como un asistente jurídico experto en normativa de Uruguay.\n"
+            "Responde a la pregunta del usuario utilizando ÚNICAMENTE la normativa provista en el contexto.\n"
+            "Tu respuesta DEBE tener EXACTAMENTE TRES PÁRRAFOS y seguir esta estructura estrictamente:\n"
+            "Párrafo 1: La respuesta directa a la pregunta del usuario.\n"
+            "Párrafo 2: Cuál o cuáles textos legales responden a la pregunta, mencionando el título oficial y jerarquía de las normas.\n"
+            "Párrafo 3: Una descripción más detallada del texto legal, de qué trata y cómo regula el tema en cuestión.\n\n"
+            "Debes citar los textos legales usando hipervínculos con este formato exacto de Markdown: [Nombre de la Ley](source:<INDEX>)\n"
+            "Donde <INDEX> es el número de índice (empezando en 0) del documento correspondiente en el contexto provisto.\n"
+            "Ejemplo de uso: 'Según lo establecido en el [Código Civil](source:0) y el [Código Penal](source:2)...'\n"
+            "Asegúrate de que los enlaces apunten al 'source:' correcto basándote en el número de índice [INDEX: X] provisto en cada fragmento del contexto."
         )
         
         user_prompt = f"CONTEXTO NORMATIVO:\n{context_text}\n\nPREGUNTA DEL USUARIO:\n{query}"

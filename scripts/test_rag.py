@@ -13,13 +13,16 @@ from index import LegalRAG
 def test_rag():
     rag = LegalRAG()
     
-    queries = [
-        "¿Cuál era el artículo 25 de la Constitución de 1830?",
-        "¿Qué establece el artículo 7 sobre los derechos de los habitantes en la constitución vigente?",
-        "¿Cuáles son los requisitos para ser senador?"
-    ]
+    if len(sys.argv) > 1:
+        preguntas = [sys.argv[1]]
+    else:
+        preguntas = [
+            "¿Cuál era el artículo 25 de la Constitución de 1830?",
+            "¿Qué establece el artículo 7 sobre los derechos de los habitantes en la constitución vigente?",
+            "¿Cuáles son los requisitos para ser senador?"
+        ]
     
-    for q in queries:
+    for q in preguntas:
         print(f"\n{'='*50}\nPREGUNTA: {q}\n{'='*50}")
         try:
             res = rag.chat_completion(q)

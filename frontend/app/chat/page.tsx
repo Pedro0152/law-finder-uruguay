@@ -2,13 +2,23 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
 import styles from './page.module.css';
 import globalStyles from '../page.module.css';
+
+interface Source {
+  documento: string;
+  version: string;
+  jerarquia: string;
+  articulo: string;
+  estado_vigencia: string;
+  texto: string;
+}
 
 interface Message {
   role: 'user' | 'ai';
   content: string;
-  sources?: { norma: string; articulo: string }[];
+  sources?: Source[];
 }
 
 function ChatContent() {
@@ -24,6 +34,10 @@ function ChatContent() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedSource, setSelectedSource] = useState<Source | null>(null);
 
   const executeQuery = async (queryText: string) => {
     if (!queryText.trim()) return;
@@ -78,6 +92,13 @@ function ChatContent() {
     }
   };
 
+  const openSourceModal = (sourceIndex: number, sources: Source[]) => {
+    if (sources && sources[sourceIndex]) {
+      setSelectedSource(sources[sourceIndex]);
+      setIsModalOpen(true);
+    }
+  };
+
   return (
     <div className={styles.main}>
       {/* Navbar Minimalista */}
@@ -98,16 +119,33 @@ function ChatContent() {
                 <div className={styles.userMsg}>{msg.content}</div>
               ) : (
                 <div className={styles.aiMsg}>
-                  {msg.content}
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className={styles.sourcesArea}>
-                      {msg.sources.map((src, i) => (
-                        <div key={i} className={styles.sourceTag}>
-                          {src.norma} - {src.articulo}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <ReactMarkdown
+                    components={{
+                      a: ({ node, ...props }) => {
+                        const href = props.href || '';
+                        if (href.startsWith('source:')) {
+                          const index = parseInt(href.replace('source:', ''), 10);
+                          return (
+                            <a
+                              href="#"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                openSourceModal(index, msg.sources || []);
+                              }}
+                              style={{ color: '#60a5fa', textDecoration: 'none', fontWeight: 'bold' }}
+                              onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                              onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                            >
+                              {props.children}
+                            </a>
+                          );
+                        }
+                        return <a {...props} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }} />;
+                      }
+                    }}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
                 </div>
               )}
             </div>
@@ -148,6 +186,23 @@ function ChatContent() {
           </button>
         </div>
       </div>
+
+      {/* Source Modal */}
+      {isModalOpen && selectedSource && (
+        <div className={styles.modalOverlay} onClick={() => setIsModalOpen(false)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <button className={styles.closeBtn} onClick={() => setIsModalOpen(false)}>✕</button>
+            <h2 className={styles.modalTitle}>{selectedSource.documento}</h2>
+            <h3 className={styles.modalSubtitle}>{selectedSource.jerarquia} - {selectedSource.articulo}</h3>
+            <div className={styles.modalText}>
+              {selectedSource.texto}
+            </div>
+            <div className={styles.modalMeta}>
+              <span>Vigencia: {selectedSource.estado_vigencia}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
